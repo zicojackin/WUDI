@@ -16,3 +16,5 @@ condition is met.
 | Cross-asset strategy validation (cycle on ETH, V3 on BTC) | Run after paper trading to separate asset effect from strategy effect | P2 | v0.9 review |
 | Funding rate: perp vs spot comparison | After paper trading: compare perpetual (10% annual cost) vs spot (no funding) net returns | P1 | v0.9 review |
 | Monte Carlo on WF folds | Bootstrap the 28 OOS fold returns for a realistic profit probability | P2 | v0.9 review |
+| Trend base continuation condition | If signal layer exposure reaches 30%+ without Calmar degradation, evaluate removing base layer or reducing it to 5-10% | P2 | v0.9 attribution |
+| Signal layer exposure diagnosis (3 hypotheses) | After unfreeze: (1) relax entry thresholds incrementally, (2) check exit MFE, (3) compare daily vs 4h mode signal count | P1 | v0.9 attribution |
