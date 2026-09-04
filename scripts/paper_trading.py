@@ -129,6 +129,24 @@ def log_trade(event: dict) -> None:
         fh.write(json.dumps(event, default=str) + "\n")
 
 
+def log_daily_state(
+    now: str, symbol: str, last_bar: str, current_price: float,
+    in_position: bool, entry_price: float,
+) -> None:
+    unrealized = (current_price / entry_price - 1.0) if entry_price > 0 else 0.0
+    event = {
+        "event": "daily_state",
+        "timestamp": now,
+        "symbol": symbol,
+        "signal_date": last_bar,
+        "current_price": current_price,
+        "in_position": in_position,
+        "entry_price": entry_price,
+        "unrealized_pnl_pct": round(unrealized, 6) if in_position else None,
+    }
+    log_trade(event)
+
+
 def main() -> None:
     client = BinanceClient()
     state = load_state()
@@ -156,6 +174,10 @@ def main() -> None:
 
         if last_bar and prev.get("last_bar") == last_bar:
             print(f"  {symbol}: no new bar (last={last_bar}), skipping")
+            log_daily_state(
+                now, symbol, last_bar, current_price,
+                current["in_position"], current["entry_price"],
+            )
             continue
 
         if not was_in and is_in:
@@ -171,6 +193,7 @@ def main() -> None:
             action = None
 
         if action:
+            entry_price = current["entry_price"] if action == "open" else float(prev.get("entry_price", 0.0))
             event = {
                 "timestamp": now,
                 "symbol": symbol,
@@ -181,6 +204,17 @@ def main() -> None:
             }
             if action == "open":
                 event["exposure"] = current.get("target_exposure", "")
+            if action == "close":
+                entry_date = prev.get("entry_date", "")
+                holding_days = 0
+                if entry_date:
+                    try:
+                        holding_days = (pd.Timestamp(last_bar) - pd.Timestamp(entry_date)).days
+                    except Exception:
+                        pass
+                event["entry_price"] = entry_price
+                event["entry_date"] = entry_date
+                event["holding_days"] = holding_days
             log_trade(event)
             any_trade = True
             print(f"  {symbol}: {action.upper()} @ {fill_price:.2f} (pnl={pnl_pct:+.2%})")
@@ -195,6 +229,10 @@ def main() -> None:
         else:
             print(f"  {symbol}: FLAT")
 
+        log_daily_state(
+            now, symbol, last_bar, current_price,
+            is_in, current["entry_price"],
+        )
         state[symbol] = current
 
     save_state(state)
