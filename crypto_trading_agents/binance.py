@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import requests
@@ -82,9 +83,28 @@ class BinanceClient:
                 "low": float(row[3]),
                 "close": float(row[4]),
                 "volume": float(row[5]),
+                "close_time": int(row[6]),
             }
             for row in rows
         ]
+
+
+def drop_unclosed_klines(
+    klines: list[dict[str, Any]],
+    *,
+    now_ms: int | None = None,
+) -> list[dict[str, Any]]:
+    """Drop trailing klines whose close time has not yet passed (repaint guard).
+
+    Binance always returns the current forming kline as the last item.
+    Checking close_time rather than blindly removing the last row makes this
+    a no-op for historical data (all close times are in the past) and safe
+    for any timeframe.
+    """
+    now = now_ms if now_ms is not None else int(time.time() * 1000)
+    while klines and int(klines[-1].get("close_time", 0)) >= now:
+        klines = klines[:-1]
+    return klines
 
 
 def normalize_binance_symbol(inst_id: str) -> str:

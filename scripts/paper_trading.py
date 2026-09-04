@@ -26,7 +26,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from crypto_trading_agents.cycle import CycleConfig, backtest_cycle, prepare_cycle_frame
 from crypto_trading_agents.eth_strategy_v3 import ETHStrategyV3, ETHStrategyV3Config
-from crypto_trading_agents.binance import BinanceClient, BinanceError
+from crypto_trading_agents.binance import (
+    BinanceClient,
+    BinanceError,
+    drop_unclosed_klines,
+)
 from crypto_trading_agents.trend_base_simple import weekly_frame_from_daily
 
 
@@ -43,16 +47,11 @@ def fetch_daily_candles(client: BinanceClient, symbol: str) -> pd.DataFrame:
     if not raw:
         raise BinanceError(f"No candles returned for {symbol}")
 
+    raw = drop_unclosed_klines(raw)
     df = pd.DataFrame(raw)
     df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
     df = df[["date", "open", "high", "low", "close", "volume"]].copy()
     df = df.sort_values("date").reset_index(drop=True)
-
-    # Drop the current forming candle; it is not finalized until 00:00 UTC.
-    today_utc = datetime.now(timezone.utc).date()
-    if len(df) and df["date"].iloc[-1].date() >= today_utc:
-        df = df.iloc[:-1].reset_index(drop=True)
-
     return df
 
 
