@@ -182,15 +182,22 @@ def log_daily_state(
 
 
 def main() -> None:
-    client = BinanceClient()
     state = load_state()
     now = datetime.now(timezone.utc).isoformat()
     any_trade = False
+
+    try:
+        client = BinanceClient()
+    except Exception as exc:
+        log_trade({"v": 1, "event": "run_failed", "timestamp": now, "error": str(exc)})
+        raise
 
     for symbol in SYMBOLS:
         try:
             frame = fetch_daily_candles(client, symbol)
         except BinanceError as exc:
+            log_trade({"v": 1, "event": "run_failed", "timestamp": now,
+                        "symbol": symbol, "error": str(exc)})
             print(f"  {symbol}: fetch failed ({exc})", file=sys.stderr)
             continue
 

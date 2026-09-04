@@ -190,6 +190,17 @@ Go/No-Go 清单：`9/9` 通过，脚本建议进入 60 天模拟盘。但 Walk-f
 `hard_stop` / `structure_break_loss` / `time_stop_loss` / `dynamic_structure_break` /
 `max_giveback` / `ma_reduce` / `wedge_drop` / `exhaustion_partial_exit` 等。
 
+schema 演进规则：任何字段变更必须升 `"v"` 字段并在本节记录变更历史。
+
+### 每周核对清单（约 5 分钟）
+
+- [ ] trades.jsonl 中本周 daily_state 连续 7 条、无日期缺口
+- [ ] 每条 last_bar <= 最近已收盘日（repaint 断言）
+- [ ] 无 run_failed 事件
+- [ ] state.json 阶段与近 7 天 K 线手工推演一致
+- [ ] 若本周有成交：填充价 vs T+1 开盘价偏差 < 0.5%
+- [ ] trades.jsonl + state.json 已提交到 git
+
 ### v0.9 滑点敏感性
 
 复现入口：`python scripts/slippage_sensitivity.py`。

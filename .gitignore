@@ -5,4 +5,3 @@ __pycache__/
 reports/
 .env
 .okx_config.json
-paper_trading/
