@@ -41,6 +41,8 @@ class ETHStrategyV3:
         self.current_year: Optional[int] = None
         self.exception_count_this_year = 0
         self._last_action: Optional[ETHStrategyV3Action] = None
+        self.entry_price: float = 0.0
+        self.entry_date: Optional[pd.Timestamp] = None
 
     def on_bar(self, bar: dict, weekly_bar: Optional[dict]) -> ETHStrategyV3Action:
         result = ETHStrategyV3Action()
@@ -58,6 +60,8 @@ class ETHStrategyV3:
             result.reason = "weekly_down_or_below_sma200"
         elif not self.base_open and weekly_up and above_sma200:
             self.base_open = True
+            self.entry_price = float(bar["close"])
+            self.entry_date = bar.get("date")
             result.base_action = "open"
             result.reason = "weekly_up_and_above_sma200"
 
@@ -91,6 +95,8 @@ class ETHStrategyV3:
         self.current_year = None
         self.exception_count_this_year = 0
         self._last_action = None
+        self.entry_price = 0.0
+        self.entry_date = None
 
     @property
     def target_exposure(self) -> float:
