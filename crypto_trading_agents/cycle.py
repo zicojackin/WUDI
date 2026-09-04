@@ -122,6 +122,7 @@ class CycleConfig:
     use_eth_fix: bool = False
     use_eth_exit_v2: bool = False
     use_btc_exit_final: bool = False
+    use_eth_strategy_v3: bool = False
     recovery_position_multiplier: float = 1.0
     eth_reversal_min_pattern_quality: float = 80.0
     eth_reversal_min_setup_score: float = 55.0

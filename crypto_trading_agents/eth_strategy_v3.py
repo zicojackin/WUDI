@@ -40,6 +40,7 @@ class ETHStrategyV3:
         self.exception_open = False
         self.current_year: Optional[int] = None
         self.exception_count_this_year = 0
+        self._last_action: Optional[ETHStrategyV3Action] = None
 
     def on_bar(self, bar: dict, weekly_bar: Optional[dict]) -> ETHStrategyV3Action:
         result = ETHStrategyV3Action()
@@ -81,6 +82,7 @@ class ETHStrategyV3:
             if self.exception_open:
                 result.target_exposure += self.config.exception_position_pct
 
+        self._last_action = result
         return result
 
     def reset(self) -> None:
@@ -88,6 +90,7 @@ class ETHStrategyV3:
         self.exception_open = False
         self.current_year = None
         self.exception_count_this_year = 0
+        self._last_action = None
 
     @property
     def target_exposure(self) -> float:

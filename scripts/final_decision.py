@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
@@ -14,22 +12,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from crypto_trading_agents.btc_exit_final import BTCExitFinalConfig
 from crypto_trading_agents.cycle import (
     CycleConfig,
-    prepare_cycle_frame,
     walk_forward_cycle,
 )
-from crypto_trading_agents.eth_strategy_v3 import (
-    ETHStrategyV3,
-    ETHStrategyV3Config,
-)
-from crypto_trading_agents.metrics import compute_risk_metrics
 from crypto_trading_agents.monte_carlo import MonteCarloConfig, MonteCarloSimulator
-from crypto_trading_agents.trend_base_simple import (
-    TrendBaseSimple,
-    weekly_frame_from_daily,
-)
 from scripts.backtest_with_fixes import run_backtest_with_fixes
 from scripts.validate_data import validate_ohlcv_frame
 
@@ -45,59 +32,6 @@ def signal_information_ratio(returns: pd.Series) -> float:
     if len(clean) < 2 or clean.std(ddof=0) <= 1e-12:
         return 0.0
     return float(np.sqrt(365.0) * clean.mean() / clean.std(ddof=0))
-
-
-def run_eth_v3(
-    frame: pd.DataFrame,
-    start: str,
-    end: str,
-    config: Optional[ETHStrategyV3Config] = None,
-) -> dict:
-    """Run ETH as a base-layer strategy and return daily/return diagnostics."""
-    v3_config = config or ETHStrategyV3Config()
-    prepared = prepare_cycle_frame(
-        frame,
-        CycleConfig(execution_mode="daily"),
-        symbol="ETHUSDT",
-    )
-    prepared = prepared[
-        (prepared["date"] >= pd.Timestamp(start))
-        & (prepared["date"] <= pd.Timestamp(end))
-    ].reset_index(drop=True)
-    if prepared.empty:
-        raise ValueError("No ETH candles in the requested date range.")
-
-    weekly = weekly_frame_from_daily(frame)
-    weekly_index = {date.date(): row for date, row in weekly.iterrows()}
-    strategy = ETHStrategyV3(v3_config)
-    target_exposures: list[float] = []
-    base_actions: list[str] = []
-    exception_actions: list[str] = []
-
-    for row in prepared.itertuples(index=False):
-        bar = row._asdict()
-        current_date = pd.Timestamp(bar["date"])
-        action = strategy.on_bar(bar, weekly_index.get(current_date.date()))
-        target_exposures.append(strategy.target_exposure)
-        if action.base_action:
-            base_actions.append(action.base_action)
-        if action.exception_action:
-            exception_actions.append(action.exception_action)
-
-    dates = pd.DatetimeIndex(prepared["date"])
-    close_returns = prepared.set_index("date")["close"].pct_change().fillna(0.0)
-    exposure = pd.Series(target_exposures, index=dates, dtype=float)
-    returns = close_returns.reindex(dates).fillna(0.0) * exposure.shift(1).fillna(0.0)
-    buy_and_hold = float(prepared["close"].iloc[-1] / prepared["open"].iloc[0] - 1.0)
-
-    return {
-        "strategy": strategy,
-        "returns": returns,
-        "metrics": compute_risk_metrics(returns),
-        "buy_and_hold_return": buy_and_hold,
-        "base_actions": base_actions,
-        "exception_actions": exception_actions,
-    }
 
 
 def build_checklist(
@@ -192,11 +126,12 @@ def main() -> None:
         use_btc_exit_final=True,
         base_position_pct=0.15,
     )
-    eth = run_eth_v3(
+    eth = run_backtest_with_fixes(
         eth_frame,
         args.start,
         args.end,
-        ETHStrategyV3Config(),
+        "ETHUSDT",
+        use_eth_strategy_v3=True,
     )
 
     config = CycleConfig(

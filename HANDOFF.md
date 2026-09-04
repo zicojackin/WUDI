@@ -1,8 +1,9 @@
 # Cycle of Price Action 转接摘要
 
-- **版本：** v0.8
+- **版本：** v0.9
 - **更新日期：** 2026-09-04
-- **回测快照：** 基于 commit `330db01`（v0.8 首次提交）。
+- **回测快照：** 基于 commit `330db01`（v0.8 首次提交）；v0.9 更新后复现入口为
+  `python scripts/final_decision.py`。
 
 ## 当前目标
 
@@ -34,6 +35,8 @@
 - `crypto_trading_agents/btc_exit_final.py`：BTC 最终出场规则。
 - `crypto_trading_agents/eth_strategy_v3.py`：ETH V3 纯底仓策略。
 - `scripts/final_decision.py`：最终蒙特卡洛与 Go/No-Go 决策脚本。
+- `scripts/slippage_sensitivity.py`：滑点敏感性分析。
+- `.github/workflows/ci.yml`：GitHub Actions CI，push/PR 自动跑 pytest。
 - `scripts/backtest_with_fixes.py`：修复项组合验证脚本。
 - `scripts/walk_forward_with_fixes.py`：修复前后滚动样本外对比。
 - `scripts/attribution_analysis.py`：分年度、Alpha/Beta 与市场阶段归因。
@@ -112,6 +115,10 @@ ETH 改为 `ETHStrategyV3` 纯底仓模式：周线 `EMA20 > EMA50` 且日线高
 `pattern_quality >= 85` 的极端信号才加 5%，每年最多 2 次。本次全期回测未触发
 极端例外加仓。
 
+v0.9 起 ETH V3 已接入 `backtest_with_fixes.py` 的成本管道，包含手续费
+（0.1% 每边）、滑点和资金费率（10% 年化）。此前 v0.8 快照中的 ETH V3 指标
+未含成本，仅作参考。
+
 ### v0.8 最终决策快照
 
 时间范围：`2020-01-01` 到 `2026-09-04`。复现入口：
@@ -120,13 +127,30 @@ ETH 改为 `ETHStrategyV3` 纯底仓模式：周线 `EMA20 > EMA50` 且日线高
 | 标的 | 总收益 | Sharpe | 最大回撤 | 暴露 | 备注 |
 |---|---:|---:|---:|---:|---|
 | BTC 组合 | `+100.23%` | `1.028` | `-12.81%` | `42.15%` | 42 笔信号层交易，信号 IR `0.760` |
-| ETH V3 | `+71.53%` | `0.783` | `-13.55%` | `42.48%` | 纯底仓，年化 `8.41%`，未触发例外加仓 |
+| ETH V3 | `+61.39%` | `0.701` | `-15.49%` | `42.76%` | 纯底仓含成本，年化 `7.43%`，未触发例外加仓 |
 
 BTC Walk-forward：28 折，9 折为正，一致性 `32.1%`。蒙特卡洛 10,000 次：
 盈利概率 `96.93%`，权益低于 50% 的概率 `0%`，平均最大回撤 `-7.09%`。
 
 Go/No-Go 清单：`9/9` 通过，脚本建议进入 60 天模拟盘。但 Walk-forward 仍低于
 50%，实盘或模拟盘必须使用小仓位，并把执行偏差作为最高优先级观察项。
+
+### v0.9 滑点敏感性
+
+复现入口：`python scripts/slippage_sensitivity.py`。
+
+| 标的 | 滑点 | 总收益 | Sharpe | 最大回撤 |
+|---|---:|---:|---:|---:|
+| BTC | 0.05% | `+100.23%` | `1.028` | `-12.81%` |
+| BTC | 0.10% | `+97.76%` | `1.010` | `-12.82%` |
+| BTC | 0.20% | `+88.85%` | `0.943` | `-12.84%` |
+| ETH V3 | 0.05% | `+61.39%` | `0.701` | `-15.49%` |
+| ETH V3 | 0.10% | `+61.17%` | `0.699` | `-15.58%` |
+| ETH V3 | 0.20% | `+60.72%` | `0.695` | `-15.77%` |
+
+结论：BTC 对滑点较敏感（交易频率高），0.2% 滑点时 Sharpe 跌破 1；ETH V3 交易
+频率低，滑点影响可忽略。基准成本假设：手续费 0.1% 每边 + 滑点（如表）+
+资金费率 10% 年化。
 
 ## 最近回测结果
 
@@ -271,8 +295,19 @@ Walk-forward：
 
 `python -m pytest` 当前通过，共 21 个测试。  
 `python scripts/final_decision.py` 已完整跑通，输出 v0.8 快照。
+`python scripts/slippage_sensitivity.py` 已完整跑通，输出三档滑点对比。
 
 ## Changelog
+
+### v0.9 - 2026-09-04
+
+- ETH V3 接入 `backtest_with_fixes.py` 主管道，加入手续费、滑点和资金费率。
+  收益从 v0.8 无成本的 `+71.53%` 修正为含成本的 `+61.39%`。
+- 新增 `scripts/slippage_sensitivity.py`，对 BTC 和 ETH V3 跑三档滑点。
+  BTC 在 0.2% 滑点时 Sharpe 降至 0.943；ETH V3 对滑点不敏感。
+- 新增 `.github/workflows/ci.yml`，push/PR 自动跑 pytest（Python 3.11/3.12）。
+- `scripts/final_decision.py` 改走主管道调用 ETH V3，移除独立计算路径。
+- `CycleConfig` 新增 `use_eth_strategy_v3` 标志。
 
 ### v0.8 - 2026-09-04
 
