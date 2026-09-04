@@ -66,17 +66,29 @@ def evaluate_btc(frame: pd.DataFrame) -> dict:
     end = str(frame["date"].iloc[-1].date())
     result = backtest_cycle(frame, start, end, config, symbol="BTCUSDT")
 
+    exit_reason = ""
+    stop_price = 0.0
+    if result.trades:
+        last_trade = result.trades[-1]
+        exit_reason = last_trade.exit_reason
+        stop_price = float(last_trade.initial_stop)
+
     if result.open_position:
         return {
             "in_position": True,
             "entry_price": float(result.open_position["entry_price"]),
             "entry_date": result.open_position["entry_date"],
+            "pattern_quality": float(result.open_position.get("pattern_quality", 0.0)),
+            "setup_score": float(result.open_position.get("setup_score", 0.0)),
+            "stop_price": float(result.open_position.get("stop", 0.0)),
             "last_bar": end,
         }
     return {
         "in_position": False,
         "entry_price": 0.0,
         "entry_date": "",
+        "exit_reason": exit_reason,
+        "stop_price": stop_price,
         "last_bar": end,
     }
 
@@ -129,12 +141,34 @@ def log_trade(event: dict) -> None:
         fh.write(json.dumps(event, default=str) + "\n")
 
 
+def has_daily_state(symbol: str, signal_date: str) -> bool:
+    """Check if a daily_state for (symbol, signal_date) is already logged."""
+    if not TRADES_FILE.exists():
+        return False
+    with TRADES_FILE.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                row.get("event") == "daily_state"
+                and row.get("symbol") == symbol
+                and row.get("signal_date") == signal_date
+            ):
+                return True
+    return False
+
+
 def log_daily_state(
     now: str, symbol: str, last_bar: str, current_price: float,
     in_position: bool, entry_price: float,
 ) -> None:
+    if has_daily_state(symbol, last_bar):
+        return
     unrealized = (current_price / entry_price - 1.0) if entry_price > 0 else 0.0
     event = {
+        "v": 1,
         "event": "daily_state",
         "timestamp": now,
         "symbol": symbol,
@@ -195,6 +229,7 @@ def main() -> None:
         if action:
             entry_price = current["entry_price"] if action == "open" else float(prev.get("entry_price", 0.0))
             event = {
+                "v": 1,
                 "timestamp": now,
                 "symbol": symbol,
                 "action": action,
@@ -204,6 +239,8 @@ def main() -> None:
             }
             if action == "open":
                 event["exposure"] = current.get("target_exposure", "")
+                event["grade_at_entry"] = current.get("setup_score", "")
+                event["pattern_quality"] = current.get("pattern_quality", "")
             if action == "close":
                 entry_date = prev.get("entry_date", "")
                 holding_days = 0
@@ -215,6 +252,8 @@ def main() -> None:
                 event["entry_price"] = entry_price
                 event["entry_date"] = entry_date
                 event["holding_days"] = holding_days
+                event["exit_reason"] = prev.get("exit_reason", "")
+                event["stop_price"] = prev.get("stop_price", 0.0)
             log_trade(event)
             any_trade = True
             print(f"  {symbol}: {action.upper()} @ {fill_price:.2f} (pnl={pnl_pct:+.2%})")
