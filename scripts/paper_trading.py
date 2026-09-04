@@ -1,6 +1,6 @@
 """Daily paper trading runner.
 
-Fetches daily candles from OKX public API, evaluates strategy signals,
+Fetches daily candles from Binance public API, evaluates strategy signals,
 and logs position changes to a local JSON Lines file.
 
 Usage:
@@ -26,7 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from crypto_trading_agents.cycle import CycleConfig, backtest_cycle, prepare_cycle_frame
 from crypto_trading_agents.eth_strategy_v3 import ETHStrategyV3, ETHStrategyV3Config
-from crypto_trading_agents.okx import OkxClient, OkxError
+from crypto_trading_agents.binance import BinanceClient, BinanceError
 from crypto_trading_agents.trend_base_simple import weekly_frame_from_daily
 
 
@@ -37,33 +37,13 @@ LOOKBACK_BARS = 500
 SYMBOLS = ["BTCUSDT", "ETHUSDT"]
 
 
-def fetch_daily_candles(client: OkxClient, symbol: str) -> pd.DataFrame:
-    """Fetch daily candles from OKX with pagination to cover SMA200 + weekly EMA50."""
-    okx_inst = symbol.replace("USDT", "-USDT")
-    all_candles: list[dict] = []
-    after: int | None = None
+def fetch_daily_candles(client: BinanceClient, symbol: str) -> pd.DataFrame:
+    """Fetch daily candles from Binance public data API."""
+    raw = client.candles(symbol, bar="1d", limit=LOOKBACK_BARS)
+    if not raw:
+        raise BinanceError(f"No candles returned for {symbol}")
 
-    while len(all_candles) < LOOKBACK_BARS:
-        params: dict[str, object] = {"instId": okx_inst, "bar": "1D", "limit": 300}
-        if after is not None:
-            params["after"] = str(after)
-
-        result = client._request("GET", "/api/v5/market/candles", params)
-        raw = result.get("data", [])
-        if not raw:
-            break
-
-        parsed = OkxClient._parse_candles(raw)
-        all_candles = parsed + all_candles
-        after = int(parsed[0]["timestamp"])
-
-        if len(raw) < 300:
-            break
-
-    if not all_candles:
-        raise OkxError(f"No candles returned for {symbol}")
-
-    df = pd.DataFrame(all_candles[-LOOKBACK_BARS:])
+    df = pd.DataFrame(raw)
     df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
     df = df[["date", "open", "high", "low", "close", "volume"]].copy()
     df = df.sort_values("date").reset_index(drop=True)
@@ -145,7 +125,7 @@ def log_trade(event: dict) -> None:
 
 
 def main() -> None:
-    client = OkxClient()
+    client = BinanceClient()
     state = load_state()
     now = datetime.now(timezone.utc).isoformat()
     any_trade = False
@@ -153,7 +133,7 @@ def main() -> None:
     for symbol in SYMBOLS:
         try:
             frame = fetch_daily_candles(client, symbol)
-        except OkxError as exc:
+        except BinanceError as exc:
             print(f"  {symbol}: fetch failed ({exc})", file=sys.stderr)
             continue
 
