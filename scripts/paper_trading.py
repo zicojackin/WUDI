@@ -47,6 +47,12 @@ def fetch_daily_candles(client: BinanceClient, symbol: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
     df = df[["date", "open", "high", "low", "close", "volume"]].copy()
     df = df.sort_values("date").reset_index(drop=True)
+
+    # Drop the current forming candle; it is not finalized until 00:00 UTC.
+    today_utc = datetime.now(timezone.utc).date()
+    if len(df) and df["date"].iloc[-1].date() >= today_utc:
+        df = df.iloc[:-1].reset_index(drop=True)
+
     return df
 
 
