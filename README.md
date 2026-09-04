@@ -31,7 +31,13 @@ Portfolio Manager
 ```bash
 cd crypto-trading-agents
 python -m venv .venv
+
+# Windows
 .venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+
 pip install -e .
 ```
 
@@ -71,6 +77,8 @@ crypto-agents data BTC-USDT --bar 1H --limit 30
 - **Market Data Agent**：从币安公开接口汇总 ticker、K 线、盘口深度和订单簿不平衡。
 - **Technical Agent**：计算 EMA、RSI、MACD、ATR、Bollinger Bands、成交量异常。
 - **Derivatives Agent**：可选读取 OKX 永续合约资金费率、持仓量和订单簿压力。
+- **Derivatives Agent 数据口径说明**：资金费率与持仓量来自 OKX 合约市场，
+  与币安现货价格存在口径差异，仅供参考。
 - **Sentiment Agent**：读取 Fear & Greed Index，并给出情绪区间。
 - **News Agent**：抓取 CoinDesk / Cointelegraph RSS 的最新标题，做轻量关键词打分。
 - **Bull / Bear Researcher**：分别构建多头与空头论据，并给出强度评分。
@@ -126,15 +134,46 @@ crypto-agents data BTC-USDT --bar 1H --limit 30
 python scripts/backtest_cycle_full.py
 ```
 
-默认使用 ETHUSDT 日线、双边 0.1% 手续费、ATR 止损与移动止损；衰竭阶段的部分止盈
-默认关闭，可以用 `--partial-exit` 打开。
 信号在 T 日收盘确认；回测里用 T+1 日线开盘价近似执行，避免使用收盘前不可知的数据。
-加 `--full` 可以输出完整净值曲线。
-`--execution-mode daily` 是默认模式；`--execution-mode 4h` 会重新启用 4H 回踩确认。
-可以用 `--min-quality` 控制形态质量门槛，用 `--swing-window` 调整摆动点确认窗口。
-`--walk-forward` 会滚动选择入场评分阈值并输出样本外结果。
-也可以用 `--slippage`、`--funding-rate-annual`、`--leverage`、
-`--maintenance-margin` 调整成本和风控假设。
+
+### 回测参数默认值
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--execution-mode` | `daily` | `4h` 模式下入场额外要求当日 4H 出现回踩反弹确认 |
+| `--symbol` | `ETHUSDT` | 回测标的 |
+| `--start` / `--end` | 近一年 | 回测区间 |
+| `--fee` | `0.001` (0.1%) | 双边手续费 |
+| `--stop-atr` | `2.0` | 止损 ATR 倍数 |
+| `--trail-atr` | `3.0` | 移动止损 ATR 倍数 |
+| `--partial-exit` | `0.0`（关） | 衰竭阶段部分止盈比例 |
+| `--swing-window` | `3` | 摆动点确认窗口 |
+| `--min-quality` | `40.0` | 形态质量门槛 |
+| `--min-setup-score` | `60.0` | 入场评分门槛 |
+| `--risk-per-trade` | `0.03` (3%) | 单笔风险 |
+| `--slippage` | `0.0005` (0.05%) | 滑点 |
+| `--funding-rate-annual` | `0.10` (10%) | 资金费率年化 |
+| `--leverage` | `1.0` | 杠杆 |
+| `--maintenance-margin` | `0.005` | 维持保证金率 |
+| `--benchmark-symbol` | `BTCUSDT` | 相对强弱基准（BTC 回测自动切换为 ETH） |
+
+### 4H 执行模式
+
+`--execution-mode 4h` 不会改变信号确认时点（仍是日线收盘），而是在入场条件中
+额外要求当日至少一根 4H K 线出现回踩反弹结构（价格触及 4H EMA20 后收回且收盘
+高于开盘）。成交仍以 T+1 日线开盘价近似。
+
+### Walk-forward 配置
+
+使用 `--walk-forward` 开启滚动样本外验证：
+
+- 训练窗口：180 天（`--train-days`）
+- 测试窗口：90 天（`--test-days`）
+- 阈值网格：`min_setup_score ∈ {50, 60, 70}`
+- 训练集选择标准：最大化 `策略收益 - 0.5 × |最大回撤|`
+- 测试窗口按 90 天步进，逐折输出样本外收益
+
+### 优化模块
 
 详细的原文整理、阶段说明、图表索引和本地示意图见
 [`docs/cycle-of-price-action/README.md`](docs/cycle-of-price-action/README.md)。
@@ -153,6 +192,46 @@ python scripts/backtest_cycle_full.py
 
 其中 P4-P6 模块目前是独立组件，尚未接入主回测。当前优先使用 `daily` 模式和
 2020 年起的 BTC / ETH 数据做基线验证。
+
+### 当前策略状态 (v0.9)
+
+BTC 使用「15% 趋势底仓 + 85% 信号层」组合路径，信号层启用
+`use_btc_exit_final`（盈利仓用动态结构出场）。ETH V3 为纯底仓模式（20%），
+普通信号禁用，仅保留 85/85 极端例外。两种资产均已接入成本管道（手续费 +
+滑点 + 资金费率）。
+
+关键结果：
+
+| 指标 | BTC | ETH V3 |
+|------|-----|--------|
+| 总收益 | `+100.23%` | `+61.39%` |
+| Sharpe | `1.028` | `0.701` |
+| 最大回撤 | `-12.81%` | `-15.49%` |
+| WF 正收益 | `9/28` | `11/28` |
+
+滑点敏感性：BTC 在 0.2% 滑点时 Sharpe 降至 0.943；ETH V3 交易频率低，
+滑点影响可忽略。
+
+最终决策脚本（含蒙特卡洛和 Go/No-Go）：
+
+```bash
+python scripts/final_decision.py
+```
+
+滑点敏感性分析：
+
+```bash
+python scripts/slippage_sensitivity.py
+```
+
+模拟盘 runner（每天日线收盘后跑一次）：
+
+```bash
+python scripts/paper_trading.py
+```
+
+模拟盘状态写入 `paper_trading/state.json`，交易日志追加到
+`paper_trading/trades.jsonl`。数据源为币安公开 API，内地可直连。
 
 `data/BTC_1d.csv` 和 `data/ETH_1d.csv` 已扩展为 `2020-01-01` 到 `2026-09-04`
 的日线快照，用于扩大样本量。
