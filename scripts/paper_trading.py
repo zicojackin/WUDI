@@ -241,6 +241,8 @@ def main() -> None:
                 event["exposure"] = current.get("target_exposure", "")
                 event["grade_at_entry"] = current.get("setup_score", "")
                 event["pattern_quality"] = current.get("pattern_quality", "")
+                current["origin"] = "backtest_carry" if not prev else "paper_trading"
+                event["origin"] = current["origin"]
             if action == "close":
                 entry_date = prev.get("entry_date", "")
                 holding_days = 0
@@ -254,11 +256,14 @@ def main() -> None:
                 event["holding_days"] = holding_days
                 event["exit_reason"] = prev.get("exit_reason", "")
                 event["stop_price"] = prev.get("stop_price", 0.0)
+                event["origin"] = prev.get("origin", "backtest_carry")
             log_trade(event)
             any_trade = True
             print(f"  {symbol}: {action.upper()} @ {fill_price:.2f} (pnl={pnl_pct:+.2%})")
 
         if is_in:
+            if "origin" not in current:
+                current["origin"] = prev.get("origin", "backtest_carry")
             entry = current["entry_price"]
             unrealized = (current_price / entry - 1.0) if entry > 0 else 0.0
             print(

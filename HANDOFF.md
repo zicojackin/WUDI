@@ -161,6 +161,35 @@ Go/No-Go 清单：`9/9` 通过，脚本建议进入 60 天模拟盘。但 Walk-f
 - 策略 edge（0-2 个样本不具统计意义）
 - WF 一致性是否为真实特征
 
+### trades.jsonl 事件 schema
+
+每行一条 JSON 事件。所有事件带 `"v": 1` 和 `"symbol"` 字段。
+
+**daily_state 事件**（每次运行每标的一条）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `event` | `"daily_state"` | 事件类型 |
+| `signal_date` | str | 策略评估的最后一根已收盘日线日期 |
+| `current_price` | float | 最新收盘价 |
+| `in_position` | bool | 是否持仓 |
+| `entry_price` | float | 入场价（0 表示空仓） |
+| `unrealized_pnl_pct` | float/null | 浮盈比例（空仓为 null） |
+
+**open 事件**（开仓时写入）：
+
+额外字段：`action: "open"`, `price`, `exposure`, `grade_at_entry` (setup_score),
+`pattern_quality`, `origin` (`backtest_carry` 或 `paper_trading`)。
+
+**close 事件**（平仓时写入）：
+
+额外字段：`action: "close"`, `price`, `entry_price`, `entry_date`,
+`holding_days`, `exit_reason`, `stop_price`, `pnl_pct`, `origin`。
+
+`exit_reason` 枚举值由 `BTCExitFinal` 和 cycle 引擎产生，包括
+`hard_stop` / `structure_break_loss` / `time_stop_loss` / `dynamic_structure_break` /
+`max_giveback` / `ma_reduce` / `wedge_drop` / `exhaustion_partial_exit` 等。
+
 ### v0.9 滑点敏感性
 
 复现入口：`python scripts/slippage_sensitivity.py`。
